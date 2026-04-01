@@ -19,6 +19,8 @@ import {
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_STALE_MS = 30_000;
 const POLL_INTERVAL_MS = 1_500;
+const IDENTITY_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const IDENTITY_DESCRIPTION = "alphanumeric, underscore or hyphen, max 64 chars";
 
 interface BridgeMessage {
   content: string;
@@ -42,7 +44,18 @@ function requireIdentity(): string {
     process.exit(1);
   }
 
+  if (!isValidIdentity(value)) {
+    process.stderr.write(
+      `AGENT_BRIDGE_IDENTITY must be ${IDENTITY_DESCRIPTION}.\n`,
+    );
+    process.exit(1);
+  }
+
   return value;
+}
+
+function isValidIdentity(value: string): boolean {
+  return IDENTITY_PATTERN.test(value);
 }
 
 function getMailboxRoot(): string {
@@ -252,6 +265,18 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       };
     }
 
+    if (!isValidIdentity(args.to)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Recipient identity must be ${IDENTITY_DESCRIPTION}.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
     const queued = createMessageFile(mailboxRoot, identity, args);
     return {
       content: [{ type: "text", text: JSON.stringify(queued) }],
@@ -285,30 +310,41 @@ let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let isShuttingDown = false;
 
-async function forwardPendingMessages(): Promise<void> {
-  for (const filePath of listPendingMessageFiles(inboxDir)) {
-    const message = parseMessageFile(filePath);
-    if (!message) {
-      removeFileIfPresent(filePath);
-      continue;
-    }
+let isForwardingMessages = false;
 
-    try {
-      await server.notification({
-        method: "notifications/claude/channel",
-        params: {
-          content: message.content,
-          meta: {
-            from: message.from,
-            timestamp: String(message.timestamp),
+async function forwardPendingMessages(): Promise<void> {
+  if (isForwardingMessages) {
+    return;
+  }
+
+  isForwardingMessages = true;
+  try {
+    for (const filePath of listPendingMessageFiles(inboxDir)) {
+      const message = parseMessageFile(filePath);
+      if (!message) {
+        removeFileIfPresent(filePath);
+        continue;
+      }
+
+      try {
+        await server.notification({
+          method: "notifications/claude/channel",
+          params: {
+            content: message.content,
+            meta: {
+              from: message.from,
+              timestamp: String(message.timestamp),
+            },
           },
-        },
-      });
-      removeFileIfPresent(filePath);
-    } catch (error) {
-      process.stderr.write(`[agent-bridge] Failed to forward message: ${String(error)}\n`);
-      return;
+        });
+        removeFileIfPresent(filePath);
+      } catch (error) {
+        process.stderr.write(`[agent-bridge] Failed to forward message: ${String(error)}\n`);
+        return;
+      }
     }
+  } finally {
+    isForwardingMessages = false;
   }
 }
 
