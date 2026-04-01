@@ -1,5 +1,5 @@
 {
   "name": "agent-bridge",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Bidirectional messaging between Claude Code sessions via channel notifications"
 }
