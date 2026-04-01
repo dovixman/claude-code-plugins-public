@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agent-to-agent-mcp",
+  "version": "1.0.0",
+  "description": "Bidirectional messaging between Claude Code sessions via MCP channel notifications",
+  "owner": {
+    "name": "dovixman",
+    "url": "https://github.com/dovixman"
+  },
+  "plugins": [
+    {
+      "name": "agent-bridge",
+      "description": "Bidirectional messaging between Claude Code sessions via channel notifications",
+      "source": "./agent-bridge",
+      "category": "orchestration"
+    }
+  ]
+}

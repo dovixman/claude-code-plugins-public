@@ -1,0 +1,13 @@
+{
+  "name": "agent-bridge",
+  "version": "0.1.0",
+  "description": "Bidirectional messaging between Claude Code sessions via channel notifications",
+  "keywords": ["channel", "bridge", "multi-agent"],
+  "mcpServers": ".mcp.json",
+  "channels": [
+    {
+      "server": "bridge",
+      "displayName": "Agent Bridge"
+    }
+  ]
+}

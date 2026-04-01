@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "bridge": {
+      "command": "bun",
+      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT}", "server.ts"],
+      "env": {
+        "AGENT_BRIDGE_IDENTITY": "${env.AGENT_BRIDGE_IDENTITY}"
+      }
+    }
+  }
+}
