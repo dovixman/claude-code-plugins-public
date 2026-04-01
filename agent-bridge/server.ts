@@ -119,16 +119,25 @@ function createMessageFile(
   return { from: fromIdentity, queued: true, to: args.to };
 }
 
+function readPeerRole(mailboxRoot: string, peerIdentity: string): string {
+  try {
+    return readFileSync(join(mailboxRoot, peerIdentity, ".role"), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+
 function listPeerStatuses(
   mailboxRoot: string,
   currentIdentity: string,
-): Array<{ active: boolean; name: string }> {
+): Array<{ active: boolean; name: string; role: string }> {
   try {
     return readdirSync(mailboxRoot, { withFileTypes: true })
       .filter(entry => entry.isDirectory() && entry.name !== currentIdentity)
       .map(entry => ({
         active: isPeerActive(mailboxRoot, entry.name),
         name: entry.name,
+        role: readPeerRole(mailboxRoot, entry.name),
       }));
   } catch {
     return [];
@@ -187,13 +196,21 @@ function readSendMessageArguments(value: unknown): SendMessageArguments | null {
 }
 
 const identity = requireIdentity();
+const role = process.env["AGENT_BRIDGE_ROLE"] ?? "";
 const mailboxRoot = getMailboxRoot();
 const inboxDir = buildInboxDir(mailboxRoot, identity);
 const heartbeatFile = join(inboxDir, ".heartbeat");
+const roleFile = join(inboxDir, ".role");
 
 mkdirSync(mailboxRoot, { recursive: true });
 mkdirSync(inboxDir, { recursive: true });
 writeHeartbeatFile(heartbeatFile);
+
+if (role) {
+  writeFileSync(roleFile, role);
+} else {
+  removeFileIfPresent(roleFile);
+}
 
 const server = new Server(
   { name: "agent-bridge", version: "0.1.0" },
@@ -211,17 +228,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "send_message",
-      description: "Send a message to another Claude Code session.",
+      description:
+        "Send a message to another agent in your team. You are part of a multi-agent system where multiple Claude Code sessions collaborate via the agent-bridge channel. Use list_peers to discover available teammates before sending. Messages are queued and delivered even if the recipient is temporarily offline.",
       inputSchema: {
         type: "object" as const,
         properties: {
           to: {
             type: "string",
-            description: "Recipient identity.",
+            description:
+              "Recipient agent identity (use list_peers to discover available agents).",
           },
           message: {
             type: "string",
-            description: "Message content to send.",
+            description:
+              "Message content. Be specific — include enough context for the recipient to act without follow-up questions.",
           },
         },
         required: ["to", "message"],
@@ -229,7 +249,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "list_peers",
-      description: "List other identities and whether their heartbeat is fresh.",
+      description:
+        "Discover your teammate agents. Returns all other agents in the system and whether they are currently active (heartbeat within 30s). Call this early in your session to understand who you can collaborate with. You can send messages to any listed peer using send_message.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -237,7 +258,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "get_identity",
-      description: "Return this session's configured identity.",
+      description:
+        "Get your agent identity and a summary of the communication protocol. Call this to learn your name and how to collaborate with other agents in the system.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -284,11 +306,19 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
   }
 
   if (name === "list_peers") {
+    const peers = listPeerStatuses(mailboxRoot, identity);
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify({ identity, peers: listPeerStatuses(mailboxRoot, identity) }),
+          text: JSON.stringify({
+            identity,
+            peers,
+            hint:
+              peers.length > 0
+                ? `You have ${peers.length} teammate(s). Use send_message(to, message) to contact any of them. Active peers are online and will receive messages immediately. Inactive peers will receive messages when they come back online.`
+                : "No peers found yet. Other agents will appear here once they start their sessions.",
+          }),
         },
       ],
     };
@@ -296,7 +326,25 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
   if (name === "get_identity") {
     return {
-      content: [{ type: "text", text: JSON.stringify({ identity }) }],
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            identity,
+            role: role || undefined,
+            protocol: {
+              discover_peers: "Call list_peers to see all available teammate agents and their active status.",
+              send: "Call send_message(to, message) to send a message to a peer agent.",
+              receive: "Incoming messages arrive automatically as channel notifications with a 'from' field indicating the sender.",
+              tips: [
+                "Identify yourself when initiating contact with a new peer.",
+                "Be specific in messages — include enough context for the recipient to act.",
+                "Acknowledge receipt when you receive a message that requires action.",
+              ],
+            },
+          }),
+        },
+      ],
     };
   }
 
