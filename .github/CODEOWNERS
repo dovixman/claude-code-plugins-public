@@ -1,0 +1,5 @@
+# Default owner for all files
+* @dovixman
+
+# GitHub config requires explicit owner review
+/.github/ @dovixman
