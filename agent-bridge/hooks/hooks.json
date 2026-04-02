@@ -1,5 +1,5 @@
 {
-  "description": "Agent bridge session hooks — inject communication protocol and peer list on startup",
+  "description": "Inject communication protocol and peer list on session startup",
   "hooks": {
     "SessionStart": [
       {

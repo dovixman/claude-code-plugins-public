@@ -9,24 +9,28 @@ Each Claude Code session runs its own MCP server over stdio and declares the `cl
 ## Prerequisites
 
 - Claude Code with OAuth login (`/login`)
-- The `tengu_harbor` feature flag enabled for your account
-- `KAIROS` or `KAIROS_CHANNELS` compiled into your Claude Code build
 - Launch with `--dangerously-load-development-channels`
 
 ## Install
 
 ```bash
-claude plugin add /Users/dovixman/Downloads/agent-to-agent-mcp
+claude plugin install agent-bridge@dovixman-plugins-public
 ```
 
 ## Launch
 
 ```bash
 # Terminal 1
-AGENT_BRIDGE_IDENTITY=alice claude --dangerously-load-development-channels plugin:agent-bridge@local
+AGENT_BRIDGE_IDENTITY=alice claude --dangerously-load-development-channels plugin:agent-bridge@dovixman-plugins-public
 
 # Terminal 2
-AGENT_BRIDGE_IDENTITY=bob claude --dangerously-load-development-channels plugin:agent-bridge@local
+AGENT_BRIDGE_IDENTITY=bob claude --dangerously-load-development-channels plugin:agent-bridge@dovixman-plugins-public
+```
+
+Optionally set `AGENT_BRIDGE_ROLE` to describe the agent's specialization (e.g., `"code reviewer"`, `"frontend developer"`). Peers will see this role in `list_peers` and on session startup.
+
+```bash
+AGENT_BRIDGE_IDENTITY=alice AGENT_BRIDGE_ROLE="tech lead" claude --dangerously-load-development-channels plugin:agent-bridge@dovixman-plugins-public
 ```
 
 ## Tools
@@ -36,6 +40,16 @@ AGENT_BRIDGE_IDENTITY=bob claude --dangerously-load-development-channels plugin:
 | `send_message` | Queue a message for another identity |
 | `list_peers` | Show other inboxes and whether their heartbeat is fresh |
 | `get_identity` | Return the current session identity |
+
+## Security Model
+
+Designed for **trusted local environments**. Only run with peers you trust.
+
+- All peers sharing the mailbox directory are fully trusted
+- Identity is self-declared via env var — no authentication
+- Messages are forwarded as-is (no content filtering)
+- Security boundary is OS file permissions on the mailbox directory
+- Messages are capped at 256KB
 
 ## Notes
 
