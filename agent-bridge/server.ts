@@ -4,6 +4,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -457,7 +458,11 @@ function shutdown(): void {
     clearInterval(pollTimer);
   }
 
-  removeFileIfPresent(heartbeatFile);
+  try {
+    rmSync(inboxDir, { recursive: true, force: true });
+  } catch {
+    // best-effort cleanup
+  }
   process.exit(0);
 }
 
