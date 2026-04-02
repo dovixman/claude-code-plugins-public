@@ -21,6 +21,8 @@ const HEARTBEAT_STALE_MS = 30_000;
 const POLL_INTERVAL_MS = 1_500;
 const IDENTITY_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const IDENTITY_DESCRIPTION = "alphanumeric, underscore or hyphen, max 64 chars";
+const MAX_ROLE_LENGTH = 128;
+const MAX_MESSAGE_SIZE = 256 * 1024;
 
 interface BridgeMessage {
   content: string;
@@ -58,13 +60,31 @@ function isValidIdentity(value: string): boolean {
   return IDENTITY_PATTERN.test(value);
 }
 
+function sanitizeRole(value: string): string {
+  if (!value || value === "${AGENT_BRIDGE_ROLE}") {
+    return "";
+  }
+
+  return value
+    .replace(/[\r\n]/g, " ")
+    .replace(/[^\x20-\x7E]/g, "")
+    .trim()
+    .slice(0, MAX_ROLE_LENGTH);
+}
+
 function getMailboxRoot(): string {
   const pluginDataDir = process.env["CLAUDE_PLUGIN_DATA"];
   if (pluginDataDir) {
     return join(pluginDataDir, "mailbox");
   }
 
-  return join(process.env["HOME"] ?? ".", ".claude", "agent-bridge", "mailbox");
+  const home = process.env["HOME"];
+  if (!home) {
+    process.stderr.write("HOME env var is required when CLAUDE_PLUGIN_DATA is not set.\n");
+    process.exit(1);
+  }
+
+  return join(home, ".claude", "agent-bridge", "mailbox");
 }
 
 function buildInboxDir(mailboxRoot: string, currentIdentity: string): string {
@@ -79,7 +99,6 @@ function removeFileIfPresent(filePath: string): void {
   try {
     unlinkSync(filePath);
   } catch {
-    // The file may already be gone during shutdown.
   }
 }
 
@@ -121,7 +140,8 @@ function createMessageFile(
 
 function readPeerRole(mailboxRoot: string, peerIdentity: string): string {
   try {
-    return readFileSync(join(mailboxRoot, peerIdentity, ".role"), "utf-8").trim();
+    const raw = readFileSync(join(mailboxRoot, peerIdentity, ".role"), "utf-8");
+    return sanitizeRole(raw);
   } catch {
     return "";
   }
@@ -165,6 +185,7 @@ function parseMessageFile(filePath: string): BridgeMessage | null {
       typeof parsed.to !== "string" ||
       typeof parsed.timestamp !== "number"
     ) {
+      process.stderr.write(`[agent-bridge] Malformed message file, skipping: ${filePath}\n`);
       return null;
     }
 
@@ -174,7 +195,8 @@ function parseMessageFile(filePath: string): BridgeMessage | null {
       timestamp: parsed.timestamp,
       to: parsed.to,
     };
-  } catch {
+  } catch (error) {
+    process.stderr.write(`[agent-bridge] Failed to parse message file: ${filePath}: ${String(error)}\n`);
     return null;
   }
 }
@@ -196,7 +218,7 @@ function readSendMessageArguments(value: unknown): SendMessageArguments | null {
 }
 
 const identity = requireIdentity();
-const role = process.env["AGENT_BRIDGE_ROLE"] ?? "";
+const role = sanitizeRole(process.env["AGENT_BRIDGE_ROLE"] ?? "");
 const mailboxRoot = getMailboxRoot();
 const inboxDir = buildInboxDir(mailboxRoot, identity);
 const heartbeatFile = join(inboxDir, ".heartbeat");
@@ -242,6 +264,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description:
               "Message content. Be specific — include enough context for the recipient to act without follow-up questions.",
+            maxLength: MAX_MESSAGE_SIZE,
           },
         },
         required: ["to", "message"],
@@ -293,6 +316,18 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           {
             type: "text",
             text: `Recipient identity must be ${IDENTITY_DESCRIPTION}.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (Buffer.byteLength(args.message, "utf-8") > MAX_MESSAGE_SIZE) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Message exceeds maximum size of ${MAX_MESSAGE_SIZE / 1024}KB.`,
           },
         ],
         isError: true,

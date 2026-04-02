@@ -4,10 +4,8 @@ set -euo pipefail
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-.}"
 IDENTITY="${AGENT_BRIDGE_IDENTITY:-}"
 
-# 1. Output the communication protocol playbook
 cat "$PLUGIN_ROOT/references/agent-communication.md"
 
-# 2. Discover peers from the mailbox directory
 if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
   MAILBOX_ROOT="$CLAUDE_PLUGIN_DATA/mailbox"
 else
@@ -39,7 +37,6 @@ for peer_dir in "$MAILBOX_ROOT"/*/; do
 
   peer_name="$(basename "$peer_dir")"
 
-  # Skip self
   if [ "$peer_name" = "$IDENTITY" ]; then
     continue
   fi
@@ -56,11 +53,11 @@ for peer_dir in "$MAILBOX_ROOT"/*/; do
     fi
   fi
 
-  # Check for a role file (optional: peers can declare a role)
   role_file="$peer_dir/.role"
   role=""
   if [ -f "$role_file" ]; then
     role="$(cat "$role_file" 2>/dev/null || echo "")"
+    role="$(printf '%s' "$role" | tr -d '\001-\037\177' | tr -d '`' | cut -c1-128)"
   fi
 
   if [ -n "$role" ]; then
