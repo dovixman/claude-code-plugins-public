@@ -38,21 +38,13 @@ Once both sessions are running, each agent can:
 
 That's it. Messages are delivered in real time. If a recipient isn't online yet, messages queue up and are delivered when they connect.
 
-## Optional: Agent Roles
-
-Set `AGENT_BRIDGE_ROLE` to describe what each agent does. Peers see this in `list_peers` and on startup.
-
-```bash
-AGENT_BRIDGE_IDENTITY=alice AGENT_BRIDGE_ROLE="tech lead" claude --dangerously-load-development-channels plugin:agent-bridge@dovixman-plugins-public
-```
-
 ## Tools
 
 | Tool | Description |
 |------|-------------|
 | `send_message` | Send a message to another agent by name |
 | `list_peers` | See all agents and whether they're online |
-| `get_identity` | Check your own name and role |
+| `get_identity` | Check your own name |
 
 ## How It Works
 

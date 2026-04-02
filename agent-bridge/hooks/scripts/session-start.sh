@@ -53,18 +53,7 @@ for peer_dir in "$MAILBOX_ROOT"/*/; do
     fi
   fi
 
-  role_file="$peer_dir/.role"
-  role=""
-  if [ -f "$role_file" ]; then
-    role="$(cat "$role_file" 2>/dev/null || echo "")"
-    role="$(printf '%s' "$role" | tr -d '\001-\037\177' | tr -d '`' | cut -c1-128)"
-  fi
-
-  if [ -n "$role" ]; then
-    echo "- \`$peer_name\` — **$status** — $role"
-  else
-    echo "- \`$peer_name\` — **$status**"
-  fi
+  echo "- \`$peer_name\` — **$status**"
 
   FOUND_PEERS=$((FOUND_PEERS + 1))
 done

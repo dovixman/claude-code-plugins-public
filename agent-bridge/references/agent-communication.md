@@ -4,16 +4,15 @@ You are part of a multi-agent system. Multiple Claude Code sessions collaborate 
 
 ## Your Identity
 
-You have a unique identity in this system. Call `get_identity` to learn your name and role. Other agents know you by this name. Agents can have a **role** describing their specialization (e.g., "frontend developer", "code reviewer", "test runner").
+You have a unique identity in this system. Call `get_identity` to learn your name. Other agents know you by this name.
 
 ## Discovering Teammates
 
-Call `list_peers` to see all other agents, their status, and their role:
+Call `list_peers` to see all other agents and their status:
 - **active** = online, heartbeat within 30s — messages delivered immediately
 - **inactive** = offline or stale — messages queued until they return
-- **role** = the agent's specialization (if declared)
 
-Call this early in your session so you know who is available and what they do.
+Call this early in your session so you know who is available.
 
 ## Available MCP Tools
 

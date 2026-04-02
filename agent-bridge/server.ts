@@ -22,7 +22,6 @@ const HEARTBEAT_STALE_MS = 30_000;
 const POLL_INTERVAL_MS = 1_500;
 const IDENTITY_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const IDENTITY_DESCRIPTION = "alphanumeric, underscore or hyphen, max 64 chars";
-const MAX_ROLE_LENGTH = 128;
 const MAX_MESSAGE_SIZE = 256 * 1024;
 
 interface BridgeMessage {
@@ -59,18 +58,6 @@ function requireIdentity(): string {
 
 function isValidIdentity(value: string): boolean {
   return IDENTITY_PATTERN.test(value);
-}
-
-function sanitizeRole(value: string): string {
-  if (!value || value === "${AGENT_BRIDGE_ROLE}") {
-    return "";
-  }
-
-  return value
-    .replace(/[\r\n]/g, " ")
-    .replace(/[^\x20-\x7E]/g, "")
-    .trim()
-    .slice(0, MAX_ROLE_LENGTH);
 }
 
 function getMailboxRoot(): string {
@@ -139,26 +126,16 @@ function createMessageFile(
   return { from: fromIdentity, queued: true, to: args.to };
 }
 
-function readPeerRole(mailboxRoot: string, peerIdentity: string): string {
-  try {
-    const raw = readFileSync(join(mailboxRoot, peerIdentity, ".role"), "utf-8");
-    return sanitizeRole(raw);
-  } catch {
-    return "";
-  }
-}
-
 function listPeerStatuses(
   mailboxRoot: string,
   currentIdentity: string,
-): Array<{ active: boolean; name: string; role: string }> {
+): Array<{ active: boolean; name: string }> {
   try {
     return readdirSync(mailboxRoot, { withFileTypes: true })
       .filter(entry => entry.isDirectory() && entry.name !== currentIdentity)
       .map(entry => ({
         active: isPeerActive(mailboxRoot, entry.name),
         name: entry.name,
-        role: readPeerRole(mailboxRoot, entry.name),
       }));
   } catch {
     return [];
@@ -219,21 +196,13 @@ function readSendMessageArguments(value: unknown): SendMessageArguments | null {
 }
 
 const identity = requireIdentity();
-const role = sanitizeRole(process.env["AGENT_BRIDGE_ROLE"] ?? "");
 const mailboxRoot = getMailboxRoot();
 const inboxDir = buildInboxDir(mailboxRoot, identity);
 const heartbeatFile = join(inboxDir, ".heartbeat");
-const roleFile = join(inboxDir, ".role");
 
 mkdirSync(mailboxRoot, { recursive: true });
 mkdirSync(inboxDir, { recursive: true });
 writeHeartbeatFile(heartbeatFile);
-
-if (role) {
-  writeFileSync(roleFile, role);
-} else {
-  removeFileIfPresent(roleFile);
-}
 
 const server = new Server(
   { name: "agent-bridge", version: "0.1.0" },
@@ -367,7 +336,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           type: "text",
           text: JSON.stringify({
             identity,
-            role: role || undefined,
             protocol: {
               discover_peers: "Call list_peers to see all available teammate agents and their active status.",
               send: "Call send_message(to, message) to send a message to a peer agent.",
