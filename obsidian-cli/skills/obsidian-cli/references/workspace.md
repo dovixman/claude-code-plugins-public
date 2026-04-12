@@ -47,8 +47,3 @@ obsidian random [folder=<path>] [newtab]
 obsidian random:read [folder=<path>]
 ```
 
-## Unique Note
-
-```bash
-obsidian unique [name=<text>] [content=<text>] [paneType=tab|split|window] [open]
-```
