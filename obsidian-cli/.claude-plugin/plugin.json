@@ -1,0 +1,5 @@
+{
+  "name": "obsidian-cli",
+  "version": "0.0.1",
+  "description": "Control Obsidian from the command line for note management, search, task tracking, sync, publish, and developer workflows."
+}

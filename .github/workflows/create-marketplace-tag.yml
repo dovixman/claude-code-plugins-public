@@ -1,0 +1,84 @@
+name: Create Marketplace Tag
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.claude-plugin/marketplace.json'
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Check if marketplace version changed
+        id: check-version
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(jq -r '.version' "./.claude-plugin/marketplace.json")
+
+          # Get previous version (from parent commit)
+          PREVIOUS_VERSION=$(git show HEAD~1:./.claude-plugin/marketplace.json 2>/dev/null | jq -r '.version' || echo "")
+
+          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "previous-version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ] && [ -n "$PREVIOUS_VERSION" ]; then
+            echo "version-changed=true" >> $GITHUB_OUTPUT
+            echo "Creating tag for version: $CURRENT_VERSION"
+          else
+            echo "version-changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged, skipping tag creation"
+          fi
+
+      - name: Create and push marketplace version tag
+        if: steps.check-version.outputs.version-changed == 'true'
+        run: |
+          VERSION=${{ steps.check-version.outputs.current-version }}
+          TAG_NAME="v${VERSION}"
+
+          # Check if tag already exists
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "⚠️  Tag $TAG_NAME already exists, skipping"
+            exit 0
+          fi
+
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git tag -a "$TAG_NAME" -m "Marketplace version $VERSION"
+          git push origin "$TAG_NAME"
+
+          echo "✅ Created and pushed tag: $TAG_NAME"
+
+      - name: Create release
+        if: steps.check-version.outputs.version-changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ steps.check-version.outputs.current-version }}';
+            const tagName = `v${version}`;
+
+            try {
+              await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                name: `Marketplace v${version}`,
+                body: `## Marketplace Version ${version}\n\nThis release includes updates to plugins in the Claude Code marketplace.`,
+              });
+              console.log(`✅ Release created: ${tagName}`);
+            } catch (error) {
+              if (error.status === 422) {
+                console.log(`⚠️  Release already exists for ${tagName}`);
+              } else {
+                throw error;
+              }
+            }

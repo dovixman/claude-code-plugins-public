@@ -1,0 +1,262 @@
+name: Auto Version Upgrade
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      version-updates: ${{ steps.detect.outputs.version-updates }}
+      marketplace-bump: ${{ steps.detect.outputs.marketplace-bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes and determine version bumps
+        id: detect
+        run: |
+          # Get the list of changed files
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          ADDED_FILES=$(git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD)
+          DELETED_FILES=$(git diff --name-only --diff-filter=D origin/${{ github.base_ref }}...HEAD)
+
+          # Initialize tracking variables
+          declare -A PLUGIN_BUMPS
+          MARKETPLACE_BUMP="none"
+          NEW_PLUGINS_COUNT=0
+          REMOVED_PLUGINS_COUNT=0
+
+          echo "=== Changed files ==="
+          echo "$CHANGED_FILES"
+          echo ""
+
+          # Check each plugin directory for changes
+          for plugin_dir in $(find . -maxdepth 3 -path './*/.claude-plugin/plugin.json' | sed 's|^\./||; s|/.claude-plugin/plugin.json$||' | sort); do
+            PLUGIN_CHANGES=$(echo "$CHANGED_FILES" | grep "^$plugin_dir/" || true)
+
+            if [ -z "$PLUGIN_CHANGES" ]; then
+              continue
+            fi
+
+            echo "Changes detected in plugin: $plugin_dir"
+
+            # Check for new files within the plugin (exclude plugin.json version changes)
+            NEW_PLUGIN_FILES=$(echo "$ADDED_FILES" | grep "^$plugin_dir/" | grep -v "plugin\.json$" || true)
+
+            if [ -n "$NEW_PLUGIN_FILES" ]; then
+              PLUGIN_BUMPS[$plugin_dir]="minor"
+              echo "  → New files detected: marking for MINOR bump"
+            else
+              # Check for deleted files within the plugin
+              DELETED_PLUGIN_FILES=$(echo "$DELETED_FILES" | grep "^$plugin_dir/" | grep -v "plugin\.json$" || true)
+              if [ -n "$DELETED_PLUGIN_FILES" ]; then
+                PLUGIN_BUMPS[$plugin_dir]="minor"
+                echo "  → Deleted files detected: marking for MINOR bump"
+              else
+                # Only modified files = patch
+                PLUGIN_BUMPS[$plugin_dir]="patch"
+                echo "  → Only modifications detected: marking for PATCH bump"
+              fi
+            fi
+          done
+
+          # Check for changes in marketplace.json
+          if echo "$CHANGED_FILES" | grep -q "\.claude-plugin/marketplace\.json"; then
+            echo ""
+            echo "Marketplace changes detected"
+
+            # Count plugins in base and head
+            BASE_PLUGINS=$(git show origin/${{ github.base_ref }}:./.claude-plugin/marketplace.json 2>/dev/null | jq '.plugins | length' || echo "0")
+            HEAD_PLUGINS=$(git show HEAD:./.claude-plugin/marketplace.json 2>/dev/null | jq '.plugins | length' || echo "0")
+
+            NEW_PLUGINS_COUNT=$((HEAD_PLUGINS - BASE_PLUGINS))
+
+            if [ "$NEW_PLUGINS_COUNT" -gt 0 ]; then
+              MARKETPLACE_BUMP="minor"
+              echo "  → New plugins added ($NEW_PLUGINS_COUNT): marking marketplace for MINOR bump"
+            elif [ "$NEW_PLUGINS_COUNT" -lt 0 ]; then
+              MARKETPLACE_BUMP="major"
+              echo "  → Plugins removed: marking marketplace for MAJOR bump"
+            else
+              MARKETPLACE_BUMP="patch"
+              echo "  → Existing plugins modified: marking marketplace for PATCH bump"
+            fi
+          fi
+
+          # Output the detected changes
+          OUTPUT_JSON="{\"plugins\": {"
+          FIRST=true
+          for plugin in "${!PLUGIN_BUMPS[@]}"; do
+            if [ "$FIRST" = false ]; then
+              OUTPUT_JSON+=","
+            fi
+            OUTPUT_JSON+="\"$plugin\": \"${PLUGIN_BUMPS[$plugin]}\""
+            FIRST=false
+          done
+          OUTPUT_JSON+="}, \"marketplace\": \"$MARKETPLACE_BUMP\"}"
+
+          echo ""
+          echo "=== Version Updates ==="
+          echo "$OUTPUT_JSON" | jq '.'
+
+          echo "version-updates=$OUTPUT_JSON" >> $GITHUB_OUTPUT
+          echo "marketplace-bump=$MARKETPLACE_BUMP" >> $GITHUB_OUTPUT
+
+  apply-versions:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.marketplace-bump != 'none' || contains(needs.detect-changes.outputs.version-updates, '"patch"') || contains(needs.detect-changes.outputs.version-updates, '"minor"') || contains(needs.detect-changes.outputs.version-updates, '"major"') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Update plugin and marketplace versions
+        run: |
+          VERSION_UPDATES='${{ needs.detect-changes.outputs.version-updates }}'
+          MARKETPLACE_BUMP='${{ needs.detect-changes.outputs.marketplace-bump }}'
+
+          # Function to increment version
+          increment_version() {
+            local version=$1
+            local bump_type=$2
+
+            IFS='.' read -r major minor patch <<< "$version"
+
+            case $bump_type in
+              patch)
+                patch=$((patch + 1))
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+            esac
+
+            echo "$major.$minor.$patch"
+          }
+
+          # Update individual plugin versions
+          echo "Processing plugin version updates..."
+          echo "$VERSION_UPDATES" | jq -r '.plugins | to_entries[] | "\(.key) \(.value)"' | while read plugin bump_type; do
+            if [ -z "$plugin" ]; then
+              continue
+            fi
+
+            PLUGIN_JSON_PATH="./$plugin/.claude-plugin/plugin.json"
+            if [ -f "$PLUGIN_JSON_PATH" ]; then
+              CURRENT_VERSION=$(jq -r '.version' "$PLUGIN_JSON_PATH")
+              NEW_VERSION=$(increment_version "$CURRENT_VERSION" "$bump_type")
+
+              echo "Updating $plugin from $CURRENT_VERSION to $NEW_VERSION ($bump_type)"
+
+              jq --arg version "$NEW_VERSION" '.version = $version' "$PLUGIN_JSON_PATH" > "$PLUGIN_JSON_PATH.tmp"
+              mv "$PLUGIN_JSON_PATH.tmp" "$PLUGIN_JSON_PATH"
+            fi
+          done
+
+          # Update marketplace version
+          MARKETPLACE_JSON_PATH="./.claude-plugin/marketplace.json"
+          CURRENT_MARKETPLACE_VERSION=$(jq -r '.version' "$MARKETPLACE_JSON_PATH")
+          NEW_MARKETPLACE_VERSION=$(increment_version "$CURRENT_MARKETPLACE_VERSION" "$MARKETPLACE_BUMP")
+
+          echo "Updating marketplace from $CURRENT_MARKETPLACE_VERSION to $NEW_MARKETPLACE_VERSION ($MARKETPLACE_BUMP)"
+
+          jq --arg version "$NEW_MARKETPLACE_VERSION" '.version = $version' "$MARKETPLACE_JSON_PATH" > "$MARKETPLACE_JSON_PATH.tmp"
+          mv "$MARKETPLACE_JSON_PATH.tmp" "$MARKETPLACE_JSON_PATH"
+
+      - name: Create or update PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const VERSION_UPDATES = JSON.parse('${{ needs.detect-changes.outputs.version-updates }}');
+            const MARKETPLACE_BUMP = '${{ needs.detect-changes.outputs.marketplace-bump }}';
+
+            let comment = '## 📦 Auto Version Update\n\n';
+
+            if (Object.keys(VERSION_UPDATES.plugins).length > 0) {
+              comment += '### Plugin Versions\n';
+              for (const [plugin, bumpType] of Object.entries(VERSION_UPDATES.plugins)) {
+                const emoji = bumpType === 'major' ? '⬆️' : bumpType === 'minor' ? '📈' : '📝';
+                comment += `- ${emoji} **${plugin}**: ${bumpType} version bump\n`;
+              }
+              comment += '\n';
+            }
+
+            comment += `### Marketplace Version\n`;
+            comment += `- 📦 **Marketplace**: ${MARKETPLACE_BUMP} version bump\n`;
+
+            // Try to find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.data.find(comment =>
+              comment.body.includes('Auto Version Update')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment,
+              });
+            }
+
+      - name: Check if changes were made
+        id: check-changes
+        run: |
+          if git diff --quiet; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push version updates
+        if: steps.check-changes.outputs.has-changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git add "./.claude-plugin/marketplace.json" "./**/.claude-plugin/plugin.json"
+          git commit -m "chore: update plugin and marketplace versions"
+          git push
+
+      - name: Comment if no changes needed
+        if: steps.check-changes.outputs.has-changes == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '✅ No version updates needed for this PR.',
+            });
