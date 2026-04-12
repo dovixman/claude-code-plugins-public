@@ -45,7 +45,7 @@ The skill uses reference-based routing: SKILL.md identifies user intent and load
 
 - **Reference-based routing**: SKILL.md identifies user intent and loads the matching reference file.
 - **Prerequisite gate**: Always checks for `obsidian` binary before any operation.
-- **Destructive operation guard**: Confirms with user before delete, move, rename, or property removal.
+- **Permission-based safety**: Destructive commands (`delete`, `property:remove`, `publish:remove`, `workspace:delete`, etc.) are excluded from `allowed-tools` — the runtime prompts the user for permission.
 
 ## Development
 
