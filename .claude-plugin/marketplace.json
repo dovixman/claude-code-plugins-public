@@ -11,6 +11,11 @@
       "name": "agent-bridge",
       "description": "Bidirectional messaging between Claude Code sessions via channel notifications",
       "source": "./agent-bridge"
+    },
+    {
+      "name": "obsidian-cli",
+      "description": "Control Obsidian from the command line for note management, search, task tracking, sync, publish, and developer workflows",
+      "source": "./obsidian-cli"
     }
   ]
 }
