@@ -1,7 +1,7 @@
 ---
 name: obsidian-cli
 description: This skill should be used when the user asks to "obsidian", "obsidian cli", "vault search", "search vault", "search notes", "create note", "new note", "open note", "daily note", "append to note", "prepend to note", "read note", "list tasks", "manage tasks", "obsidian tasks", "check tasks", "obsidian tags", "obsidian bookmarks", "obsidian sync", "obsidian publish", "obsidian properties", "set property", "obsidian plugins", "obsidian templates", "insert template", "obsidian workspace", "obsidian search", "obsidian eval", "obsidian screenshot", "obsidian devtools", or any task involving the Obsidian CLI.
-allowed-tools: "Bash(obsidian:*), Bash(which:*), Bash(ls:*), Read, Glob, AskUserQuestion"
+allowed-tools: "Bash(obsidian help:*), Bash(obsidian version:*), Bash(obsidian reload:*), Bash(obsidian restart:*), Bash(obsidian file:*), Bash(obsidian files:*), Bash(obsidian folder:*), Bash(obsidian folders:*), Bash(obsidian read:*), Bash(obsidian open:*), Bash(obsidian create:*), Bash(obsidian append:*), Bash(obsidian prepend:*), Bash(obsidian move:*), Bash(obsidian rename:*), Bash(obsidian daily:*), Bash(obsidian search:*), Bash(obsidian tasks:*), Bash(obsidian task:*), Bash(obsidian tags:*), Bash(obsidian tag:*), Bash(obsidian properties:*), Bash(obsidian property\\:set:*), Bash(obsidian property\\:read:*), Bash(obsidian aliases:*), Bash(obsidian backlinks:*), Bash(obsidian links:*), Bash(obsidian unresolved:*), Bash(obsidian orphans:*), Bash(obsidian deadends:*), Bash(obsidian bookmarks:*), Bash(obsidian bookmark:*), Bash(obsidian outline:*), Bash(obsidian diff:*), Bash(obsidian history:*), Bash(obsidian sync:*), Bash(obsidian sync\\:status:*), Bash(obsidian sync\\:history:*), Bash(obsidian sync\\:read:*), Bash(obsidian sync\\:open:*), Bash(obsidian sync\\:deleted:*), Bash(obsidian publish\\:site:*), Bash(obsidian publish\\:list:*), Bash(obsidian publish\\:status:*), Bash(obsidian publish\\:open:*), Bash(obsidian publish\\:add:*), Bash(obsidian plugins:*), Bash(obsidian plugins\\:enabled:*), Bash(obsidian plugin :*), Bash(obsidian plugin\\:enable:*), Bash(obsidian plugin\\:disable:*), Bash(obsidian plugin\\:install:*), Bash(obsidian plugin\\:reload:*), Bash(obsidian themes:*), Bash(obsidian theme:*), Bash(obsidian theme\\:set:*), Bash(obsidian theme\\:install:*), Bash(obsidian snippets:*), Bash(obsidian snippet\\:enable:*), Bash(obsidian snippet\\:disable:*), Bash(obsidian vault:*), Bash(obsidian vaults:*), Bash(obsidian workspace:*), Bash(obsidian workspaces:*), Bash(obsidian workspace\\:save:*), Bash(obsidian workspace\\:load:*), Bash(obsidian tabs:*), Bash(obsidian tab\\:open:*), Bash(obsidian recents:*), Bash(obsidian wordcount:*), Bash(obsidian web:*), Bash(obsidian random:*), Bash(obsidian unique:*), Bash(obsidian templates:*), Bash(obsidian template\\:read:*), Bash(obsidian template\\:insert:*), Bash(obsidian bases:*), Bash(obsidian base\\:views:*), Bash(obsidian base\\:create:*), Bash(obsidian base\\:query:*), Bash(obsidian devtools:*), Bash(obsidian dev\\:debug:*), Bash(obsidian dev\\:errors:*), Bash(obsidian dev\\:console:*), Bash(obsidian dev\\:screenshot:*), Bash(obsidian dev\\:mobile:*), Bash(obsidian dev\\:css:*), Bash(obsidian dev\\:dom:*), Bash(obsidian dev\\:cdp:*), Bash(obsidian eval:*), Bash(obsidian commands:*), Bash(obsidian command:*), Bash(obsidian hotkeys:*), Bash(obsidian hotkey:*), Bash(which:*), Bash(ls:*), Read, Glob"
 effort: low
 ---
 
@@ -64,8 +64,6 @@ obsidian [vault=<name>] <command> [parameter=value ...] [flags]
 
 ### Execution Rules
 
-1. Confirm with user before `delete`, `move`, `rename`, `property:remove`.
-2. Prefer `format=json` when parsing output programmatically.
-3. On failure, run `obsidian help <command>` before retrying.
-4. Prefer `file=<name>` over `path=<path>` unless user provides an exact path.
-5. For batch operations, show the plan and confirm before executing.
+1. Prefer `format=json` when parsing output programmatically.
+2. On failure, run `obsidian help <command>` before retrying.
+3. Prefer `file=<name>` over `path=<path>` unless user provides an exact path.
